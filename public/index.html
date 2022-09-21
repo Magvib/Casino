@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roulette</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.27.2/axios.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@2.30.0/dist/full.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body>
+
+    <style>
+        /* Center #app horizontal */
+        #app {
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translate(-50%, -25%);
+            width: 100%;
+        }
+    </style>
+
+    <div id="app">
+        <div class="toast toast-top toast-start">
+            <div v-if="alert.message != ''" class="alert" :class="'alert-' + alert.alertType">
+                <div>
+                    <span>{{alert.message}}</span>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="!auth" style="display: flex;flex-direction: column;gap:10px;margin: auto;width: 50%;padding: 10px;">
+            <input class="input input-bordered w-full" type="text" v-model="usernameInput" placeholder="Username">
+            <input class="input input-bordered w-full" type="password" v-model="passwordInput" placeholder="Password">
+            <button @click="login" class="btn btn-primary">Login</button>
+        </div>
+        <div v-else>
+            <!-- Show username and balance -->
+            <div style="display: flex;flex-direction: column;gap: 10px;margin: auto;width: 50%;padding: 10px;">
+                <div class="alert alert-info shadow-lg">
+                    <div>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            class="stroke-current flex-shrink-0 w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span>Welcome <b>{{ user.username }}</b> your balance is <b>{{ new Intl.NumberFormat('da-DK', {
+                                style: 'currency', currency: 'EUR' }).format(user.balance) }}</b>.</span>
+                    </div>
+                </div>
+
+                <!-- Logout -->
+                <div class="divider">Actions</div>
+                <button @click="logout" class="btn btn-secondary">Logout</button>
+
+                <!-- Roulette -->
+                <div class="divider">Roulette</div>
+                <input class="input input-bordered w-full" placeholder="Bet amount" v-model="bet">
+                <div style="margin: auto;">
+                    <div class="btn-group">
+                        <button @click="betColor = 'red'" :class="{'bg-red-600 text-white': (betColor == 'red')}"
+                            class="btn">Red</button>
+                        <button @click="betColor = 'black'"
+                            :class="{'bg-neutral-900 text-white border-sky-500': (betColor == 'black')}"
+                            class="btn">Black</button>
+                        <button @click="betColor = 'green'" :class="{'bg-green-600 text-white': (betColor == 'green')}"
+                            class="btn">Green</button>
+                    </div>
+                </div>
+                <button @click="spin" class="btn btn-primary">Spin</button>
+                <span class="countdown font-mono text-6xl">
+                    <span :style="{'--value': number}" style="width: 100%;text-align: center;color: white;"
+                        :class="{ 'bg-green-600': (color == 'green'), 'bg-red-600': (color == 'red'), 'bg-neutral-900': (color == 'black') }"
+                        class="rounded-md"></span>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        Vue.createApp({
+            data() {
+                return {
+                    auth: false,
+                    usernameInput: '',
+                    passwordInput: '',
+                    user: {},
+                    betColor: 'red',
+                    bet: 100,
+                    number: 0,
+                    color: '',
+                    alert: {
+                        message: '',
+                        alertType: 'info',
+                    },
+                }
+            },
+            methods: {
+                login() {
+                    axios.post('/auth', {
+                        username: this.usernameInput,
+                        password: this.passwordInput
+                    }).then(res => {
+                        if (res.data.username) {
+                            this.auth = true;
+                            this.user = res.data;
+                        }
+                    })
+                },
+                checkLoggedIn() {
+                    axios.get('/auth/user').then(res => {
+                        if (res.data.username) {
+                            this.auth = true;
+                            this.user = res.data;
+                        }
+                    })
+                },
+                logout() {
+                    axios.get('/auth/logout').then(res => {
+                        this.auth = false;
+                        this.user = {};
+                    })
+                },
+                spin() {
+                    axios.post('/roulette/spin', {
+                        bet: this.bet,
+                        choice: this.betColor
+                    }).then(res => {
+                        if (res.data.number) {
+                            this.number = res.data.number;
+
+                            this.color = '';
+                            this.alert.message = '';
+
+                            setTimeout(() => {
+                                this.color = res.data.color;
+                                this.user.balance = res.data.balance;
+
+                                // Show alert
+                                this.alert.message = res.data.message;
+                                this.alert.alertType = res.data.alertType;
+
+                                setTimeout(() => {
+                                    this.alert.message = '';
+                                }, 3000);
+                            }, 1000);
+                        }
+                    })
+                }
+            },
+            mounted() {
+                this.checkLoggedIn();
+            },
+            watch: {
+                bet(newVal, oldVal) {
+                    // check if bet is a number and if it is higher than 0 and lower than balance
+                    if (isNaN(newVal)) {
+                        this.bet = 100;
+                    }
+
+                    if (newVal <= 0) {
+                        this.bet = 1;
+                    }
+
+                    if (newVal > this.user.balance) {
+                        this.bet = this.user.balance;
+                    }
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+
+</html>
